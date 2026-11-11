@@ -163,21 +163,21 @@ def render_hero():
 
 # ------------------------------------------------------------------ tiles
 def tile(name, label, color, big, caption, delay, counter=None):
-    w, h = 260, 170
+    w, h = 260, 128
     ring = ("" if STATIC else
             f"<circle cx='0' cy='0' r='10' fill='none' stroke='{color}' stroke-width='2' opacity='0'>"
             f"<animate attributeName='r' from='10' to='120' dur='1.4s' begin='{delay + .5:.2f}s' fill='freeze'/>"
             f"<animate attributeName='opacity' from='.7' to='0' dur='1.4s' begin='{delay + .5:.2f}s' fill='freeze'/></circle>")
-    value = (count_up(24, 106, counter, 64, INK, delay + 0.4) if counter is not None else
-             f"<text x='24' y='104' font-size='46' class='serif' fill='{INK}'>{escape(big)}</text>")
+    value = (count_up(24, 86, counter, 52, INK, delay + 0.4) if counter is not None else
+             f"<text x='24' y='84' font-size='38' class='serif' fill='{INK}'>{escape(big)}</text>")
     body = (
         f"<g class='pop' {d(delay)}>"
         f"<rect x='0' y='0' width='{w}' height='8' fill='{color}' clip-path='url(#top)'/>"
         f"{ring}"
-        f"<text x='24' y='42' font-size='12' class='sans' fill='{color}' letter-spacing='3'>{label}</text>"
+        f"<text x='24' y='36' font-size='12' class='sans' fill='{color}' letter-spacing='3'>{label}</text>"
         f"{value}"
-        f"<text x='24' y='138' font-size='14' class='sans' fill='{MUTED}'>{escape(caption)}</text>"
-        f"<text x='{w-24}' y='146' font-size='24' class='sans' fill='{INK}' text-anchor='end'>↗</text>"
+        f"<text x='24' y='112' font-size='13' class='sans' fill='{MUTED}'>{escape(caption)}</text>"
+        f"<text x='{w-24}' y='114' font-size='22' class='sans' fill='{INK}' text-anchor='end'>↗</text>"
         f"</g>")
     defs = f"<clipPath id='top'><rect x='0' y='0' width='{w}' height='{h}' rx='16'/></clipPath>"
     write(f"{name}.svg", svg(w, h, body, defs=defs))
@@ -198,10 +198,10 @@ def render_tiles(data):
 #   growing animation = SMIL animateTransform (translate) + animate (height) on the side faces.
 import math
 
-ANGLE = 30
+ANGLE = 22      # flatter than the repo's 30 deg so the 75%-height card still fits the whole year
 # contribution levels 0..4 in the profile theme: empty, then four blues ending at the accent
 CITY_COLORS = ["#2a303a", "#1c3b6e", "#1f5fb0", "#3a86e8", BLUE]
-HEIGHT_SCALE = 1.5
+HEIGHT_SCALE = 1.1
 
 
 def darker(hex_, k):
@@ -225,7 +225,7 @@ def contrib_levels(days):
 
 def render_city(data):
     days = data.get("days", [])
-    w, h = 800, 520
+    w, h = 800, 390
     levels = contrib_levels(days)
     first = date.fromisoformat(days[0]["date"]) if days else date.today()
     sun0 = (first.weekday() + 1) % 7                       # weekday index, Sunday = 0
@@ -293,16 +293,16 @@ def render_city(data):
     stats = [("current streak", f"{streak} days"), ("longest streak", f"{longest} days"),
              ("active days", str(active)),
              ("busiest day", f"{busiest['count']} on {busiest['date'][5:]}" if busiest["date"] else "-")]
-    sy = h - 215
+    sy = h - 150
     for k, v in stats:
         head.append(f"<g class='fade' {d(1.0)}><text x='40' y='{sy - 20}' font-size='11' class='sans' fill='{MUTED}' letter-spacing='1'>{k.upper()}</text>"
-                    f"<text x='40' y='{sy}' font-size='22' class='serif' fill='{INK}'>{escape(v)}</text></g>")
-        sy += 40
+                    f"<text x='40' y='{sy}' font-size='20' class='serif' fill='{INK}'>{escape(v)}</text></g>")
+        sy += 34
     lg = f"<text x='40' y='{h - 14}' font-size='11' class='sans' fill='{MUTED}'>Less</text>"
     for i, c in enumerate(CITY_COLORS):
         lg += f"<rect x='{70 + i * 18}' y='{h - 24}' width='12' height='12' rx='3' fill='{c}'/>"
     lg += f"<text x='{70 + 5 * 18 + 4}' y='{h - 14}' font-size='11' class='sans' fill='{MUTED}'>More</text>"
-    write("city.svg", svg(w, h, "".join(head) + "<g>" + "".join(body) + "</g>" + lg, extra_css="".join(css)))
+    write("city.svg", svg(w, h, "".join(head) + "<g>" + "".join(body) + "</g>" + lg, extra_css="".join(css), bg="#0d1117"))
 
 
 # ------------------------------------------------------------- repo cards
@@ -311,7 +311,7 @@ def render_repos(data):
         old.unlink()
     accents = [BLUE, RED, YELLOW, INK]
     for i, r in enumerate(data.get("repos", [])[:4]):
-        w, h = 396, 150
+        w, h = 396, 112
         name = r["name"]
         if len(name) <= 24:
             lines = [name]
@@ -323,13 +323,13 @@ def render_repos(data):
         t = 1.5 + i * 0.15
         body = [f"<rect x='0' y='0' width='8' height='{h}' fill='{c}' clip-path='url(#l)' class='fade' {d(t)}/>"]
         for j, ln in enumerate(lines[:2]):
-            body.append(f"<text x='28' y='{52 + j*30}' font-size='26' class='serif rise' fill='{INK}' {d(t)}>{escape(ln)}</text>")
+            body.append(f"<text x='28' y='{38 + j*26}' font-size='22' class='serif rise' fill='{INK}' {d(t)}>{escape(ln)}</text>")
         desc = r.get("description") or ""
         if desc:
-            body.append(f"<text x='28' y='108' font-size='13' class='sans fade' fill='{MUTED}' {d(t + .2)}>{escape(desc[:46] + ('…' if len(desc) > 46 else ''))}</text>")
+            body.append(f"<text x='28' y='84' font-size='12' class='sans fade' fill='{MUTED}' {d(t + .2)}>{escape(desc[:46] + ('…' if len(desc) > 46 else ''))}</text>")
         meta = " · ".join(x for x in [r.get("language"), f"★ {r.get('stars', 0)}"] if x)
-        body.append(f"<text x='28' y='{h-22}' font-size='13' class='sans fade' fill='{MUTED}' {d(t + .2)}>{escape(meta)}</text>")
-        body.append(f"<text x='{w-26}' y='{h-20}' font-size='22' class='sans' fill='{INK}' text-anchor='end'>↗</text>")
+        body.append(f"<text x='28' y='{h-14}' font-size='12' class='sans fade' fill='{MUTED}' {d(t + .2)}>{escape(meta)}</text>")
+        body.append(f"<text x='{w-26}' y='{h-14}' font-size='20' class='sans' fill='{INK}' text-anchor='end'>↗</text>")
         defs = f"<clipPath id='l'><rect x='0' y='0' width='{w}' height='{h}' rx='16'/></clipPath>"
         write(f"repo_{i+1}.svg", svg(w, h, "".join(body), defs=defs))
 
