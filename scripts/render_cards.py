@@ -191,96 +191,118 @@ def render_tiles(data):
 
 
 # ------------------------------------------------------------------- city
-GREENS = ["#0f5a2a", "#13a247", "#27e05a", "#7dff94"]  # low -> high contribution count
-CITY_BG, TRAY, EMPTY_TILE = "#080c0a", "#1b2a22", "#17201b"
+# Port of the isometric technique from yoshi389111/github-profile-3d-contrib:
+#   x = (week - weekday) * dx,  y = (week + weekday) * dy  with dy = dx * tan(30deg)
+#   height = log10(count / 20 + 1) * 144 + 3
+#   each bar = three skewed rects (top / left / right), left = color.darker(.5), right = color.darker(1)
+#   growing animation = SMIL animateTransform (translate) + animate (height) on the side faces.
+import math
+
+ANGLE = 30
+# contribution levels 0..4 in the profile theme: empty, then four blues ending at the accent
+CITY_COLORS = ["#2a303a", "#1c3b6e", "#1f5fb0", "#3a86e8", BLUE]
+HEIGHT_SCALE = 1.5
 
 
-def shade(hex_, f):
+def darker(hex_, k):
+    f = 0.7 ** k  # d3.rgb().darker(k)
     r, g, b = (int(hex_[i:i + 2], 16) for i in (1, 3, 5))
-    return "#%02x%02x%02x" % (min(255, int(r * f)), min(255, int(g * f)), min(255, int(b * f)))
+    return "#%02x%02x%02x" % (int(r * f), int(g * f), int(b * f))
 
 
-def pts(*p):
-    return " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
+def contrib_levels(days):
+    """GitHub-style quartile levels (0 = none, 1..4) from the non-zero counts."""
+    nz = sorted(dd["count"] for dd in days if dd["count"] > 0)
+    if not nz:
+        return {}
+    q = [nz[min(len(nz) - 1, int(len(nz) * f))] for f in (0.25, 0.5, 0.75)]
+    out = {}
+    for dd in days:
+        c = dd["count"]
+        out[dd["date"]] = 0 if c == 0 else 1 + sum(c > t for t in q)
+    return out
 
 
 def render_city(data):
-    """GitHub-style contribution grid whose flat heatmap tiles rise into glowing 3D bars."""
     days = data.get("days", [])
-    w, h = 800, 380
-    peak = max([dd["count"] for dd in days] + [1])
-    start = (date.fromisoformat(days[0]["date"]).weekday() + 1) % 7 if days else 0  # weeks start on Sunday
-    ncols = (len(days) + start + 6) // 7
-    cw, rh, maxh = 12.6, 22.0, 78.0
-    gx0, gy0 = w / 2, 160.0
+    w, h = 800, 520
+    levels = contrib_levels(days)
+    first = date.fromisoformat(days[0]["date"]) if days else date.today()
+    sun0 = (first.weekday() + 1) % 7                       # weekday index, Sunday = 0
+    weekcount = math.ceil((len(days) + sun0) / 7)
+    dx = w / 64
+    dy = dx * math.tan(math.radians(ANGLE))
+    dxx, dyy = dx * 0.9, dy * 0.9
+    off_x, off_y = dx * 7, h - (weekcount + 7) * dy
 
-    cells, month_cols = [], {}
+    css = []
+    for i, c in enumerate(CITY_COLORS):
+        css.append(f".cT{i}{{fill:{c}}}.cL{i}{{fill:{darker(c, .5)}}}.cR{i}{{fill:{darker(c, 1)}}}")
+    skew_x = math.degrees(math.atan(dxx / 2 / dyy))
+    top_tf = f"skewY({-ANGLE}) skewX({skew_x:.3f}) scale(1 {2 * dyy / dxx:.4f})"
+    scale_side = math.hypot(dxx, dyy) / dxx
+
+    cells = []
     for i, dd in enumerate(days):
-        col, row = divmod(i + start, 7)
-        cells.append((row, col, dd))
-        month_cols.setdefault(dd["date"][:7], col)
-    cells.sort(key=lambda c: (c[0], c[1]))  # far row -> near row (painter's order)
+        week, dow = divmod(i + sun0, 7)
+        cells.append((week + dow, week, dow, dd))
+    cells.sort(key=lambda c: (c[0], c[1]))                 # far -> near
 
-    body = [f"<rect x='16' y='84' width='{w-32}' height='{h-100}' rx='18' fill='none' stroke='{TRAY}' stroke-width='1.5'/>"]
-    for lbl, r in (("Mon", 1), ("Wed", 3), ("Fri", 5)):
-        sc = 0.94 + 0.06 * r / 6
-        body.append(f"<text x='{gx0 - (ncols/2) * cw * sc - 12:.1f}' y='{gy0 + r * rh + 6:.1f}' font-size='11' class='sans' "
-                    f"fill='{MUTED}' text-anchor='end'>{lbl}</text>")
-    for m, col in month_cols.items():
-        if col > ncols - 3 or col == 0 and m != list(month_cols)[0]:
-            continue
-        body.append(f"<text x='{gx0 + (col - ncols/2 + .5) * cw * .94:.1f}' y='{gy0 - 52:.1f}' font-size='12' class='sans' "
-                    f"fill='{MUTED}' text-anchor='middle'>{date(int(m[:4]), int(m[5:]), 1).strftime('%b')}</text>")
+    body = []
+    for _, week, dow, dd in cells:
+        cnt, lvl = dd["count"], levels.get(dd["date"], 0)
+        bx = off_x + (week - dow) * dx
+        by = off_y + (week + dow) * dy
+        ch = (math.log10(cnt / 20 + 1) * 144 * HEIGHT_SCALE + 3) if cnt else 3
+        grow = cnt > 0 and not STATIC
+        start_h = 3 if grow else ch
+        g_tf = f"translate({bx:.2f} {by - start_h:.2f})"
+        begin = f"{1.8 + week * 0.035:.2f}s"
+        el = [f"<g transform='{g_tf}'>"]
+        if grow:
+            el.append(f"<animateTransform attributeName='transform' type='translate' "
+                      f"from='{bx:.2f} {by - 3:.2f}' to='{bx:.2f} {by - ch:.2f}' dur='1.6s' begin='{begin}' fill='freeze' "
+                      f"calcMode='spline' keyTimes='0;1' keySplines='.2 .8 .3 1'/>")
+        el.append(f"<rect class='cT{lvl}' width='{dxx:.2f}' height='{dxx:.2f}' transform='{top_tf}'/>")
+        for cls, tf in (("cL", f"skewY({ANGLE}) scale(1 {scale_side:.4f})"),
+                        ("cR", f"translate({dxx:.2f} {dyy:.2f}) skewY({-ANGLE}) scale(1 {scale_side:.4f})")):
+            anim = ""
+            if grow:
+                anim = (f"<animate attributeName='height' from='{3 / scale_side:.2f}' to='{ch / scale_side:.2f}' "
+                        f"dur='1.6s' begin='{begin}' fill='freeze' calcMode='spline' keyTimes='0;1' keySplines='.2 .8 .3 1'/>")
+            el.append(f"<rect class='{cls}{lvl}' width='{dxx:.2f}' height='{start_h / scale_side:.2f}' transform='{tf}'>{anim}</rect>")
+        el.append("</g>")
+        body.append("".join(el))
 
-    for row, col, dd in cells:
-        cnt = dd["count"]
-        sc = 0.94 + 0.06 * row / 6
-        cx = gx0 + (col - ncols / 2 + .5) * cw * sc
-        yb = gy0 + row * rh + rh / 2           # front-bottom edge of the tile
-        bw = cw * sc * 0.76
-        xl, xr = cx - bw / 2, cx + bw / 2
-        ox, dd_ = bw * 0.28, rh * 0.36          # oblique depth offset
-        if cnt == 0:
-            body.append(f"<polygon points='{pts((xl, yb), (xr, yb), (xr + ox, yb - dd_), (xl + ox, yb - dd_))}' fill='{EMPTY_TILE}'/>")
-            continue
-        lvl = min(3, int(cnt / peak * 4 - 1e-9))
-        c = GREENS[lvl]
-        bh = max(6.0, cnt / peak * maxh)
-        top = lambda e: pts((xl, yb - e), (xr, yb - e), (xr + ox, yb - e - dd_), (xl + ox, yb - e - dd_))
-        front = lambda e: pts((xl, yb - e), (xr, yb - e), (xr, yb), (xl, yb))
-        side = lambda e: pts((xr, yb - e), (xr + ox, yb - e - dd_), (xr + ox, yb - dd_), (xr, yb))
-        if STATIC:
-            faces = (top(bh), front(bh), side(bh))
-            anim = lambda to, frm: ""
-        else:
-            faces = (top(0), front(0), side(0))
-            begin = 2.0 + col * 0.04 + row * 0.015
-            anim = lambda to, frm: (f"<animate attributeName='points' from='{frm}' to='{to}' dur='1s' begin='{begin:.2f}s' "
-                                    f"fill='freeze' calcMode='spline' keyTimes='0;1' keySplines='.2 .9 .3 1.15'/>")
-        body.append(f"<polygon points='{faces[2]}' fill='{shade(c, .55)}'>{anim(side(bh), side(0))}</polygon>")
-        body.append(f"<polygon points='{faces[1]}' fill='{shade(c, .85)}'>{anim(front(bh), front(0))}</polygon>")
-        body.append(f"<polygon points='{faces[0]}' fill='{shade(c, 1.12)}'>{anim(top(bh), top(0))}</polygon>")
-
-    # streak stats
-    streak = cur = 0
+    # stats
+    streak = cur = longest = 0
     for dd in days:
         cur = cur + 1 if dd["count"] > 0 else 0
+        longest = max(longest, cur)
     for i, dd in enumerate(reversed(days)):
         if dd["count"] > 0:
             streak += 1
         elif i > 0:
             break
     active = sum(1 for dd in days if dd["count"])
+    busiest = max(days, key=lambda x: x["count"], default={"date": "", "count": 0})
 
     total = data.get("total_contributions", 0)
-    head = (f"<text x='32' y='52' font-size='30' class='sans fade' fill='{INK}'><tspan fill='{GREENS[2]}'>{total}</tspan> contributions in the last year</text>")
-    foot_y = h - 30
-    foot = (f"<text x='36' y='{foot_y}' font-size='12' class='sans' fill='{MUTED}'>Refreshed daily · {streak}-day streak · {active} active days</text>"
-            f"<text x='{w-200}' y='{foot_y}' font-size='12' class='sans' fill='{MUTED}' text-anchor='end'>Less</text>")
-    for i, col in enumerate([EMPTY_TILE] + GREENS):
-        foot += f"<rect x='{w-190 + i * 20}' y='{foot_y - 11}' width='14' height='14' rx='3' fill='{col}'/>"
-    foot += f"<text x='{w-84}' y='{foot_y}' font-size='12' class='sans' fill='{MUTED}'>More</text>"
-    write("city.svg", svg(w, h, head + "".join(body) + foot, bg=CITY_BG))
+    head = [f"<text x='{w-40}' y='46' font-size='13' class='sans fade' fill='{MUTED}' letter-spacing='3' text-anchor='end'>CONTRIBUTION CITY · LAST 12 MONTHS</text>",
+            f"<text x='{w-40}' y='92' font-size='40' class='serif fade' fill='{INK}' text-anchor='end' {d(.2)}><tspan fill='{BLUE}'>{total}</tspan> contributions</text>"]
+    stats = [("current streak", f"{streak} days"), ("longest streak", f"{longest} days"),
+             ("active days", str(active)),
+             ("busiest day", f"{busiest['count']} on {busiest['date'][5:]}" if busiest["date"] else "-")]
+    sy = h - 215
+    for k, v in stats:
+        head.append(f"<g class='fade' {d(1.0)}><text x='40' y='{sy - 20}' font-size='11' class='sans' fill='{MUTED}' letter-spacing='1'>{k.upper()}</text>"
+                    f"<text x='40' y='{sy}' font-size='22' class='serif' fill='{INK}'>{escape(v)}</text></g>")
+        sy += 40
+    lg = f"<text x='40' y='{h - 14}' font-size='11' class='sans' fill='{MUTED}'>Less</text>"
+    for i, c in enumerate(CITY_COLORS):
+        lg += f"<rect x='{70 + i * 18}' y='{h - 24}' width='12' height='12' rx='3' fill='{c}'/>"
+    lg += f"<text x='{70 + 5 * 18 + 4}' y='{h - 14}' font-size='11' class='sans' fill='{MUTED}'>More</text>"
+    write("city.svg", svg(w, h, "".join(head) + "<g>" + "".join(body) + "</g>" + lg, extra_css="".join(css)))
 
 
 # ------------------------------------------------------------- repo cards
