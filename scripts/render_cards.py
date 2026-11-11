@@ -67,7 +67,7 @@ def font_css() -> str:
 _FONT_CSS = None
 
 
-def svg(w, h, body, extra_css="", defs=""):
+def svg(w, h, body, extra_css="", defs="", bg=None, stroke=None):
     """Wrap a card: paper background, shared fonts + keyframes."""
     global _FONT_CSS
     if _FONT_CSS is None:
@@ -90,7 +90,7 @@ def svg(w, h, body, extra_css="", defs=""):
         f"<style>{_FONT_CSS}"
         f".serif{{font-family:{SERIF}}} .sans{{font-family:{SANS}}}"
         f"{anim}{extra_css}</style>"
-        f"<rect x='.5' y='.5' width='{w-1}' height='{h-1}' rx='16' fill='{PAPER}' stroke='{LINE}'/>"
+        f"<rect x='.5' y='.5' width='{w-1}' height='{h-1}' rx='16' fill='{bg or PAPER}' stroke='{stroke or LINE}'/>"
         f"{body}</svg>"
     )
 
@@ -132,20 +132,21 @@ def count_up(x, y, final, size, color, t0, steps=14, dt=0.05):
 # ------------------------------------------------------------------- hero
 def render_hero():
     w, h = 800, 280
+    H_BG, H_INK, H_MUTED, H_BLUE, H_LINE = "#f2f2ef", "#14141a", "#6b6b76", "#2f5bea", "#d9d9d4"
     first, last = NAME.split(" ", 1)
     shine = ("" if STATIC else
              "<animateTransform attributeName='gradientTransform' type='translate' "
              "from='-700 0' to='700 0' dur='3.5s' begin='1.6s' repeatCount='indefinite'/>")
     defs = (f"<linearGradient id='shine' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='700' y2='0'>"
-            f"<stop offset='0' stop-color='{INK}'/><stop offset='.42' stop-color='{INK}'/>"
-            f"<stop offset='.5' stop-color='{BLUE}'/><stop offset='.58' stop-color='{INK}'/>"
-            f"<stop offset='1' stop-color='{INK}'/>{shine}</linearGradient>")
+            f"<stop offset='0' stop-color='{H_INK}'/><stop offset='.42' stop-color='{H_INK}'/>"
+            f"<stop offset='.5' stop-color='{H_BLUE}'/><stop offset='.58' stop-color='{H_INK}'/>"
+            f"<stop offset='1' stop-color='{H_INK}'/>{shine}</linearGradient>")
     body = [
-        f"<text x='40' y='52' font-size='13' class='sans rise' fill='{MUTED}' letter-spacing='3' {d(0.1)}>HELLO, I'M</text>",
-        f"<text x='40' y='128' font-size='84' class='serif rise' fill='{INK}' {d(0.25)}>{escape(first)}</text>",
-        f"<text x='40' y='208' font-size='84' class='serif rise' fill='{INK if STATIC else 'url(#shine)'}' {d(0.45)}>{escape(last)}</text>",
-        f"<text x='42' y='248' font-size='17' class='sans fade' fill='{MUTED}' {d(0.9)}>{escape(TAGLINE)}</text>",
-        f"<rect x='40' y='20' width='56' height='4' rx='2' fill='{BLUE}' class='fade' {d(0.2)}/>",
+        f"<text x='40' y='52' font-size='13' class='sans rise' fill='{H_MUTED}' letter-spacing='3' {d(0.1)}>HELLO, I'M</text>",
+        f"<text x='40' y='128' font-size='84' class='serif rise' fill='{H_INK}' {d(0.25)}>{escape(first)}</text>",
+        f"<text x='40' y='208' font-size='84' class='serif rise' fill='{H_INK if STATIC else 'url(#shine)'}' {d(0.45)}>{escape(last)}</text>",
+        f"<text x='42' y='248' font-size='17' class='sans fade' fill='{H_MUTED}' {d(0.9)}>{escape(TAGLINE)}</text>",
+        f"<rect x='40' y='20' width='56' height='4' rx='2' fill='{H_BLUE}' class='fade' {d(0.2)}/>",
     ]
     # Sketch portrait (data/portrait_sketch.png, light strokes on transparent), revealed top-to-bottom
     art = BASE / "data" / "portrait_sketch.png"
@@ -157,7 +158,7 @@ def render_hero():
                  f"height='{ph if STATIC else 0}'>{reveal}</rect></clipPath>")
         body.append(f"<image href='{data_uri(art)}' x='{px}' y='{py}' width='{pw}' height='{ph}' "
                     f"preserveAspectRatio='xMidYMid meet' clip-path='url(#reveal)'/>")
-    write("hero.svg", svg(w, h, "".join(body), defs=defs))
+    write("hero.svg", svg(w, h, "".join(body), defs=defs, bg=H_BG, stroke=H_LINE))
 
 
 # ------------------------------------------------------------------ tiles
@@ -190,13 +191,13 @@ def render_tiles(data):
 
 
 # ------------------------------------------------------------------- city
-LEVELS = ["#1b2c4d", "#1f4e8c", "#2f7de0", BLUE]  # low -> high contribution count
-EMPTY = "#1e252f"
+GREENS = ["#0f5a2a", "#13a247", "#27e05a", "#7dff94"]  # low -> high contribution count
+CITY_BG, TRAY, EMPTY_TILE = "#080c0a", "#1b2a22", "#17201b"
 
 
 def shade(hex_, f):
     r, g, b = (int(hex_[i:i + 2], 16) for i in (1, 3, 5))
-    return "#%02x%02x%02x" % (int(r * f), int(g * f), int(b * f))
+    return "#%02x%02x%02x" % (min(255, int(r * f)), min(255, int(g * f)), min(255, int(b * f)))
 
 
 def pts(*p):
@@ -204,73 +205,82 @@ def pts(*p):
 
 
 def render_city(data):
-    """Contribution heatmap that rises into an isometric 3D city."""
+    """GitHub-style contribution grid whose flat heatmap tiles rise into glowing 3D bars."""
     days = data.get("days", [])
-    w, h = 800, 460
-    tw, th, maxh = 22.0, 11.0, 78.0
-    x0, y0 = 118.0, 100.0
+    w, h = 800, 380
     peak = max([dd["count"] for dd in days] + [1])
-    start = (date.fromisoformat(days[0]["date"]).weekday() + 1) % 7 if days else 0  # weeks start Sunday
+    start = (date.fromisoformat(days[0]["date"]).weekday() + 1) % 7 if days else 0  # weeks start on Sunday
+    ncols = (len(days) + start + 6) // 7
+    cw, rh, maxh = 12.6, 22.0, 78.0
+    gx0, gy0 = w / 2, 160.0
 
-    cells = []
+    cells, month_cols = [], {}
     for i, dd in enumerate(days):
         col, row = divmod(i + start, 7)
-        cells.append((col + row, col, row, dd))
-    cells.sort(key=lambda c: (c[0], c[2]))  # painter's order: far -> near
+        cells.append((row, col, dd))
+        month_cols.setdefault(dd["date"][:7], col)
+    cells.sort(key=lambda c: (c[0], c[1]))  # far row -> near row (painter's order)
 
-    body = []
-    fw = 0.88  # footprint shrink leaves "streets" between buildings
-    for _, col, row, dd in cells:
-        cnt = dd["count"]
-        cx = x0 + (col - row) * tw / 2
-        cy = y0 + (col + row) * th / 2
-        hw, hh = tw / 2 * fw, th / 2 * fw
-        top = lambda dy: pts((cx, cy - hh - dy), (cx + hw, cy - dy), (cx, cy + hh - dy), (cx - hw, cy - dy))
-        if cnt == 0:
-            body.append(f"<polygon points='{top(0)}' fill='{EMPTY}'/>")
+    body = [f"<rect x='16' y='84' width='{w-32}' height='{h-100}' rx='18' fill='none' stroke='{TRAY}' stroke-width='1.5'/>"]
+    for lbl, r in (("Mon", 1), ("Wed", 3), ("Fri", 5)):
+        sc = 0.94 + 0.06 * r / 6
+        body.append(f"<text x='{gx0 - (ncols/2) * cw * sc - 12:.1f}' y='{gy0 + r * rh + 6:.1f}' font-size='11' class='sans' "
+                    f"fill='{MUTED}' text-anchor='end'>{lbl}</text>")
+    for m, col in month_cols.items():
+        if col > ncols - 3 or col == 0 and m != list(month_cols)[0]:
             continue
-        lvl = min(3, int(cnt / peak * 4 - 1e-9)) if cnt else 0
-        c = LEVELS[lvl]
-        bh = max(5.0, cnt / peak * maxh)
-        left = lambda dy: pts((cx - hw, cy - dy), (cx, cy + hh - dy), (cx, cy + hh), (cx - hw, cy))
-        right = lambda dy: pts((cx + hw, cy - dy), (cx, cy + hh - dy), (cx, cy + hh), (cx + hw, cy))
+        body.append(f"<text x='{gx0 + (col - ncols/2 + .5) * cw * .94:.1f}' y='{gy0 - 52:.1f}' font-size='12' class='sans' "
+                    f"fill='{MUTED}' text-anchor='middle'>{date(int(m[:4]), int(m[5:]), 1).strftime('%b')}</text>")
+
+    for row, col, dd in cells:
+        cnt = dd["count"]
+        sc = 0.94 + 0.06 * row / 6
+        cx = gx0 + (col - ncols / 2 + .5) * cw * sc
+        yb = gy0 + row * rh + rh / 2           # front-bottom edge of the tile
+        bw = cw * sc * 0.76
+        xl, xr = cx - bw / 2, cx + bw / 2
+        ox, dd_ = bw * 0.28, rh * 0.36          # oblique depth offset
+        if cnt == 0:
+            body.append(f"<polygon points='{pts((xl, yb), (xr, yb), (xr + ox, yb - dd_), (xl + ox, yb - dd_))}' fill='{EMPTY_TILE}'/>")
+            continue
+        lvl = min(3, int(cnt / peak * 4 - 1e-9))
+        c = GREENS[lvl]
+        bh = max(6.0, cnt / peak * maxh)
+        top = lambda e: pts((xl, yb - e), (xr, yb - e), (xr + ox, yb - e - dd_), (xl + ox, yb - e - dd_))
+        front = lambda e: pts((xl, yb - e), (xr, yb - e), (xr, yb), (xl, yb))
+        side = lambda e: pts((xr, yb - e), (xr + ox, yb - e - dd_), (xr + ox, yb - dd_), (xr, yb))
         if STATIC:
-            tf, lf, rf = top(bh), left(bh), right(bh)
+            faces = (top(bh), front(bh), side(bh))
             anim = lambda to, frm: ""
         else:
-            tf, lf, rf = top(0), left(0), right(0)
-            begin = 2.2 + col * 0.045 + row * 0.02
-            anim = lambda to, frm: (f"<animate attributeName='points' from='{frm}' to='{to}' dur='0.9s' "
-                                    f"begin='{begin:.2f}s' fill='freeze' calcMode='spline' keyTimes='0;1' "
-                                    f"keySplines='.2 .9 .3 1.2'/>")
-        body.append(f"<polygon points='{lf}' fill='{shade(c, .62)}'>{anim(left(bh), left(0))}</polygon>")
-        body.append(f"<polygon points='{rf}' fill='{shade(c, .8)}'>{anim(right(bh), right(0))}</polygon>")
-        body.append(f"<polygon points='{tf}' fill='{c}'>{anim(top(bh), top(0))}</polygon>")
+            faces = (top(0), front(0), side(0))
+            begin = 2.0 + col * 0.04 + row * 0.015
+            anim = lambda to, frm: (f"<animate attributeName='points' from='{frm}' to='{to}' dur='1s' begin='{begin:.2f}s' "
+                                    f"fill='freeze' calcMode='spline' keyTimes='0;1' keySplines='.2 .9 .3 1.15'/>")
+        body.append(f"<polygon points='{faces[2]}' fill='{shade(c, .55)}'>{anim(side(bh), side(0))}</polygon>")
+        body.append(f"<polygon points='{faces[1]}' fill='{shade(c, .85)}'>{anim(front(bh), front(0))}</polygon>")
+        body.append(f"<polygon points='{faces[0]}' fill='{shade(c, 1.12)}'>{anim(top(bh), top(0))}</polygon>")
 
-    # stats
-    streak = cur = longest = 0
+    # streak stats
+    streak = cur = 0
     for dd in days:
         cur = cur + 1 if dd["count"] > 0 else 0
-        longest = max(longest, cur)
     for i, dd in enumerate(reversed(days)):
         if dd["count"] > 0:
             streak += 1
         elif i > 0:
             break
     active = sum(1 for dd in days if dd["count"])
-    busiest = max(days, key=lambda x: x["count"], default={"date": "", "count": 0})
 
-    head = [f"<text x='{w-40}' y='46' font-size='13' class='sans fade' fill='{MUTED}' letter-spacing='3' text-anchor='end'>CONTRIBUTION CITY · LAST 12 MONTHS</text>",
-            f"<text x='{w-40}' y='92' font-size='40' class='serif fade' fill='{INK}' text-anchor='end' {d(.2)}>{data.get('total_contributions', 0)} contributions</text>"]
-    stats = [("current streak", f"{streak} days"), ("active days", str(active)),
-             ("longest streak", f"{longest} days"),
-             ("busiest day", f"{busiest['count']} on {busiest['date'][5:]}" if busiest["date"] else "-")]
-    sy = h - 40 - (len(stats) - 1) * 44
-    for k, v in stats:
-        head.append(f"<g class='fade' {d(1.0)}><text x='40' y='{sy - 22}' font-size='11' class='sans' fill='{MUTED}' letter-spacing='1'>{k.upper()}</text>"
-                    f"<text x='40' y='{sy}' font-size='22' class='serif' fill='{INK}'>{escape(v)}</text></g>")
-        sy += 44
-    write("city.svg", svg(w, h, "".join(head) + "".join(body)))
+    total = data.get("total_contributions", 0)
+    head = (f"<text x='32' y='52' font-size='30' class='sans fade' fill='{INK}'><tspan fill='{GREENS[2]}'>{total}</tspan> contributions in the last year</text>")
+    foot_y = h - 30
+    foot = (f"<text x='36' y='{foot_y}' font-size='12' class='sans' fill='{MUTED}'>Refreshed daily · {streak}-day streak · {active} active days</text>"
+            f"<text x='{w-200}' y='{foot_y}' font-size='12' class='sans' fill='{MUTED}' text-anchor='end'>Less</text>")
+    for i, col in enumerate([EMPTY_TILE] + GREENS):
+        foot += f"<rect x='{w-190 + i * 20}' y='{foot_y - 11}' width='14' height='14' rx='3' fill='{col}'/>"
+    foot += f"<text x='{w-84}' y='{foot_y}' font-size='12' class='sans' fill='{MUTED}'>More</text>"
+    write("city.svg", svg(w, h, head + "".join(body) + foot, bg=CITY_BG))
 
 
 # ------------------------------------------------------------- repo cards
