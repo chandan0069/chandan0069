@@ -56,7 +56,6 @@ def embed_font(name: str, url: str) -> str:
         f"--output-file={woff_path}",
         f"--text={subset_chars}",
         "--flavor=woff",
-        "--gzip",
         "--quiet",
     ], check=True)
     b64 = base64.b64encode(woff_path.read_bytes()).decode()
