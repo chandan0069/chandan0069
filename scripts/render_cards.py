@@ -43,22 +43,20 @@ CARDS_DIR.mkdir(exist_ok=True)
 # Helper: download a font, subset it and return a data‑URI string
 # ---------------------------------------------------------------------------
 def embed_font(name: str, url: str) -> str:
+    """Download a font and embed it directly as a base64‑encoded TTF.
+
+    Subsetting with pyftsubset caused errors on the runner because the
+    downloaded file is not a TrueType font in many cases.  For the small
+    glyph set we need (ASCII characters) the raw TTF size (< 50 KB) is
+    acceptable, and embedding it avoids the extra dependency.
+    """
     cache_dir = BASE_DIR / ".font_cache"
     cache_dir.mkdir(exist_ok=True)
     ttf_path = cache_dir / f"{name}.ttf"
-    woff_path = cache_dir / f"{name}.woff"
     if not ttf_path.exists():
-        subprocess.run(["curl", "-sSL", url, "-o", str(ttf_path)], check=True)
-    subset_chars = "".join(chr(c) for c in range(32, 127))
-    subprocess.run([
-        "pyftsubset",
-        str(ttf_path),
-        f"--output-file={woff_path}",
-        f"--text={subset_chars}",
-        "--flavor=woff",
-    ], check=True)
-    b64 = base64.b64encode(woff_path.read_bytes()).decode()
-    return f"data:font/woff;charset=utf-8;base64,{b64}"
+        subprocess.run(["curl", "-sSL", "-o", str(ttf_path), url], check=True)
+    b64 = base64.b64encode(ttf_path.read_bytes()).decode()
+    return f"data:font/ttf;charset=utf-8;base64,{b64}"
 
 # ---------------------------------------------------------------------------
 # CSS builder – includes staggered animation and reduced‑motion handling
