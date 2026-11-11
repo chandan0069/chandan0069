@@ -28,11 +28,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r scripts/requirements.txt
 
-      - name: Refresh contribution data (optional)
-        run: |
-          if [ -f scripts/fetch_contributions.py ]; then
-            python scripts/fetch_contributions.py
-          fi
+      - name: Refresh contribution data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/fetch_contributions.py
 
       - name: Render animated cards
         run: |
@@ -42,4 +41,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: refresh SVG cards [skip ci]"
-          file_pattern: "cards/*.svg"
+          file_pattern: "cards/*.svg data/contributions.json README.md"
