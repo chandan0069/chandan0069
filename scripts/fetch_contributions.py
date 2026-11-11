@@ -17,6 +17,10 @@ QUERY = """
 query($login: String!, $from: DateTime!, $to: DateTime!) {
   user(login: $login) {
     repositories(privacy: PUBLIC, ownerAffiliations: OWNER) { totalCount }
+    recent: repositories(first: 4, privacy: PUBLIC, ownerAffiliations: OWNER, isFork: false,
+                         orderBy: {field: PUSHED_AT, direction: DESC}) {
+      nodes { name description url stargazerCount primaryLanguage { name } }
+    }
     pinnedItems(first: 6, types: REPOSITORY) {
       nodes { ... on Repository {
         name description url stargazerCount
@@ -60,11 +64,13 @@ def main():
     cal = u["contributionsCollection"]["contributionCalendar"]
     days = [{"date": d["date"], "count": d["contributionCount"]}
             for w in cal["weeks"] for d in w["contributionDays"]]
+    # Pinned items are often hidden from the Actions token -> fall back to recently pushed repos.
+    nodes = [n for n in u["pinnedItems"]["nodes"] if n] or u["recent"]["nodes"]
     repos = [{
         "name": n["name"], "description": n["description"] or "", "url": n["url"],
         "stars": n["stargazerCount"],
         "language": (n["primaryLanguage"] or {}).get("name", ""),
-    } for n in u["pinnedItems"]["nodes"]]
+    } for n in nodes]
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(json.dumps({
         "username": USER,
