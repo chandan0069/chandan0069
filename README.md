@@ -1,11 +1,9 @@
-# GitHub Profile SVG Card Generator
+<div align="center">
 
-This repository generates a stack of animated SVG cards that can be embedded in a GitHub profile README.
+<img src="cards/hero.svg" alt="Chandan Chaudhary" width="100%"/>
 
-- **hero.svg** – Name, tagline and optional portrait.
-- **tiles.svg** – Three linked icons (GitHub, LinkedIn, website).
-- **contributions.svg** – Monthly contribution bar chart with streak info.
-- **repo_*.svg** – One card per featured repository (defined in `featured_repos.json`).
-- **heatmap.svg** – Re‑coloured contribution heat‑map.
+<img src="cards/tiles.svg" alt="Links" width="100%"/>
 
-The workflow `update-profile-art.yml` runs daily, fetches fresh contribution data, renders the cards, and commits them back to the repo.
+<img src="cards/contributions.svg" alt="Contributions" width="100%"/>
+
+</div>
